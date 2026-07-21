@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Video Watermark Service</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <section class="upload-section">
+            <h2>Add Watermark to Video</h2>
+            <form id="upload-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="email">Watermark Email</label>
+                    <input type="email" id="email" name="email" placeholder="user@example.com" required>
+                    <small>The email will appear in each corner of the video</small>
+                </div>
+                <div class="form-group">
+                    <label for="file">Select Video</label>
+                    <input type="file" id="file" name="file" accept="video/*" required>
+                    <small>MP4, MOV, MKV, AVI, WebM, GIF supported</small>
+                </div>
+                <div id="progress-container" class="hidden">
+                    <div class="progress-bar">
+                        <div id="progress-fill"></div>
+                    </div>
+                    <p id="status-text">Uploading...</p>
+                </div>
+                {% if error %}
+                <div class="error">{{ error }}</div>
+                {% endif %}
+                <button type="submit" id="submit-btn">Upload & Process</button>
+            </form>
+        </section>
+
+        <section class="jobs-section">
+            <h2>Your Videos</h2>
+            <div id="jobs-list">
+                <p class="loading">Loading...</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let accessToken = localStorage.getItem('access_token');
+
+        async function fetchWithAuth(url, options = {}) {
+            const headers = { ...options.headers };
+            if (accessToken) {
+                headers['Authorization'] = `Bearer ${accessToken}`;
+            }
+            return fetch(url, { ...options, headers });
+        }
+
+        async function loadJobs() {
+            const container = document.getElementById('jobs-list');
+            try {
+                const res = await fetchWithAuth(`${API_BASE}/jobs`);
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+                const jobs = await res.json();
+                if (jobs.length === 0) {
+                    container.innerHTML = '<p class="empty">No videos yet. Upload one above!</p>';
+                    return;
+                }
+                container.innerHTML = jobs.map(job => `
+                    <div class="job-card status-${job.status}">
+                        <div class="job-info">
+                            <strong>${escapeHtml(job.original_filename)}</strong>
+                            <span class="job-email">${escapeHtml(job.email)}</span>
+                            <span class="job-date">${new Date(job.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <div class="job-status">
+                            <span class="status-badge ${job.status}">${job.status}</span>
+                            ${job.status === 'completed' ? `<a href="/download/${job.id}" class="download-btn">Download</a>` : ''}
+                            ${job.status === 'failed' ? `<span class="error-msg">${escapeHtml(job.error_message || 'Unknown error')}</span>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = '<p class="error">Failed to load jobs</p>';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function pollJobStatus(jobId) {
+            const interval = setInterval(async () => {
+                const res = await fetchWithAuth(`${API_BASE}/jobs/${jobId}`);
+                const job = await res.json();
+                const statusBadge = document.querySelector(`.job-card[data-job-id="${jobId}"] .status-badge`);
+                if (statusBadge) {
+                    statusBadge.className = `status-badge ${job.status}`;
+                    statusBadge.textContent = job.status;
+                }
+                if (job.status === 'completed') {
+                    clearInterval(interval);
+                    const card = document.querySelector(`.job-card[data-job-id="${jobId}"] .job-status`);
+                    if (card) {
+                        card.innerHTML = `<span class="status-badge completed">completed</span> <a href="/download/${jobId}" class="download-btn">Download</a>`;
+                    }
+                } else if (job.status === 'failed') {
+                    clearInterval(interval);
+                }
+            }, 3000);
+        }
+
+        document.getElementById('upload-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const submitBtn = document.getElementById('submit-btn');
+            const progressContainer = document.getElementById('progress-container');
+            const progressFill = document.getElementById('progress-fill');
+            const statusText = document.getElementById('status-text');
+
+            submitBtn.disabled = true;
+            progressContainer.classList.remove('hidden');
+            statusText.textContent = 'Uploading...';
+            progressFill.style.width = '0%';
+
+            const formData = new FormData();
+            formData.append('email', form.email.value);
+            formData.append('file', form.file.files[0]);
+
+            try {
+                const res = await fetchWithAuth(`${API_BASE}/jobs`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Upload failed');
+                }
+
+                statusText.textContent = 'Processing video...';
+                progressFill.style.width = '50%';
+
+                const jobCard = document.createElement('div');
+                jobCard.className = 'job-card status-pending';
+                jobCard.dataset.jobId = data.job_id;
+                jobCard.innerHTML = `
+                    <div class="job-info">
+                        <strong>${escapeHtml(data.filename)}</strong>
+                        <span class="job-email">${escapeHtml(form.email.value)}</span>
+                    </div>
+                    <div class="job-status">
+                        <span class="status-badge pending">pending</span>
+                    </div>
+                `;
+                document.getElementById('jobs-list').prepend(jobCard);
+
+                pollJobStatus(data.job_id);
+
+                form.reset();
+                statusText.textContent = 'Done!';
+                progressFill.style.width = '100%';
+            } catch (e) {
+                alert('Error: ' + e.message);
+                progressContainer.classList.add('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                setTimeout(() => progressContainer.classList.add('hidden'), 2000);
+            }
+        });
+
+        loadJobs();
+    </script>
+</body>
+</html>
