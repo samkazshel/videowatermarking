@@ -105,11 +105,11 @@ def check_dependencies():
 
 
 def probe(video: Path) -> dict:
-    """Return duration and stream info for the input file."""
+    """Return duration, dimensions, and stream info for the input file."""
     result = subprocess.run(
         [
             "ffprobe", "-v", "error",
-            "-show_entries", "format=duration:stream=codec_type,codec_name",
+            "-show_entries", "format=duration:stream=codec_type,codec_name,width,height",
             "-of", "json",
             str(video),
         ],
@@ -130,7 +130,16 @@ def probe(video: Path) -> dict:
     except (KeyError, ValueError):
         die(f"could not determine duration of '{video}' (is it a live stream?)")
 
-    return {"duration": duration, "has_audio": has_audio}
+    video_stream = next((s for s in streams if s.get("codec_type") == "video"), {})
+    width = video_stream.get("width", 1280)
+    height = video_stream.get("height", 720)
+
+    return {"duration": duration, "has_audio": has_audio, "width": width, "height": height}
+
+
+def auto_fontsize(height: int) -> int:
+    """Calculate appropriate fontsize based on video height."""
+    return max(24, int(height / 30))
 
 
 def escape_drawtext(text: str) -> str:
@@ -225,8 +234,8 @@ def main():
                              "(default: <input>_watermarked.<same ext>)")
     parser.add_argument("--opacity", type=float, default=0.45,
                         help="Watermark opacity 0-1 (default: 0.45)")
-    parser.add_argument("--fontsize", type=int, default=28,
-                        help="Font size in px (default: 28)")
+    parser.add_argument("--fontsize", type=int, default=None,
+                        help="Font size in px (auto-scales to video if not set)")
     parser.add_argument("--seed", type=int, default=None,
                         help="Random seed for reproducible corner order")
     args = parser.parse_args()
@@ -245,9 +254,11 @@ def main():
 
     info = probe(args.video)
     duration = info["duration"]
-    vf, order = build_filter(args.email, duration, args.opacity, args.fontsize, args.seed)
+    fontsize = args.fontsize if args.fontsize is not None else auto_fontsize(info["height"])
+    vf, order = build_filter(args.email, duration, args.opacity, fontsize, args.seed)
 
     print(f"Input:     {args.video}")
+    print(f"Resolution: {info['width']}x{info['height']}")
     print(f"Duration:  {duration:.2f}s (each corner shown ~{duration / 4:.2f}s)")
     print(f"Corners:   {' -> '.join(order)}")
     print(f"Output:    {output}")
