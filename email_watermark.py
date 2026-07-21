@@ -167,6 +167,7 @@ def build_filter(email: str, duration: float, opacity: float, fontsize: int, see
             f"drawtext=text='{text}'"
             f":fontcolor=white:alpha={opacity}"
             f":fontsize={fontsize}"
+            f":borderw=2:bordercolor=black"
             f":x={x}:y={y}"
             f":enable='between(t,{start:.3f},{end:.3f})'"
         )
@@ -232,8 +233,8 @@ def main():
     parser.add_argument("-o", "--output", type=Path, default=None,
                         help="Output path; its extension picks the format "
                              "(default: <input>_watermarked.<same ext>)")
-    parser.add_argument("--opacity", type=float, default=0.45,
-                        help="Watermark opacity 0-1 (default: 0.45)")
+    parser.add_argument("--opacity", type=float, default=0.7,
+                        help="Watermark opacity 0-1 (default: 0.7)")
     parser.add_argument("--fontsize", type=int, default=None,
                         help="Font size in px (auto-scales to video if not set)")
     parser.add_argument("--seed", type=int, default=None,

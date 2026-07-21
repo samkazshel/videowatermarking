@@ -44,14 +44,21 @@
 
     <script>
         const API_BASE = '/api';
-        let accessToken = localStorage.getItem('access_token');
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+        let accessToken = getCookie('access_token');
 
         async function fetchWithAuth(url, options = {}) {
             const headers = { ...options.headers };
             if (accessToken) {
                 headers['Authorization'] = `Bearer ${accessToken}`;
             }
-            return fetch(url, { ...options, headers });
+            return fetch(url, { ...options, headers, credentials: 'include' });
         }
 
         async function loadJobs() {
