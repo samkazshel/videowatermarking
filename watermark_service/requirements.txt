@@ -5,3 +5,4 @@ pyyaml==6.0.2
 bcrypt==4.2.0
 python-jose[cryptography]==3.3.0
 email-validator==2.2.0
+jinja2==3.1.4
