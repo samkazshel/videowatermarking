@@ -35,7 +35,7 @@
         </section>
 
         <section class="jobs-section">
-            <h2>Your Videos</h2>
+            <h2>Your Videos <button class="clear-all-btn" onclick="clearAllJobs()">Clear All</button></h2>
             <div id="jobs-list">
                 <p class="loading">Loading...</p>
             </div>
@@ -93,6 +93,7 @@
                             <span class="status-badge ${job.status}">${job.status}</span>
                             ${job.status === 'completed' ? `<a href="/download/${job.id}" class="download-btn">Download</a>` : ''}
                             ${job.status === 'failed' ? `<span class="error-msg">${escapeHtml(job.error_message || 'Unknown error')}</span>` : ''}
+                            <button class="delete-btn" onclick="deleteJob(${job.id})">Delete</button>
                         </div>
                     </div>
                 `).join('');
@@ -155,6 +156,35 @@
                     if (progressDiv) progressDiv.remove();
                 }
             }, 1000);
+        }
+
+        async function deleteJob(jobId) {
+            if (!confirm('Delete this video?')) return;
+            try {
+                const res = await fetchWithAuth(`${API_BASE}/jobs/${jobId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    const card = document.querySelector(`.job-card[data-job-id="${jobId}"]`);
+                    if (card) card.remove();
+                    const container = document.getElementById('jobs-list');
+                    if (container.querySelectorAll('.job-card').length === 0) {
+                        container.innerHTML = '<p class="empty">No videos yet. Upload one above!</p>';
+                    }
+                }
+            } catch (e) {
+                alert('Failed to delete');
+            }
+        }
+
+        async function clearAllJobs() {
+            if (!confirm('Delete all videos? This cannot be undone.')) return;
+            try {
+                const res = await fetchWithAuth(`${API_BASE}/jobs`, { method: 'DELETE' });
+                if (res.ok) {
+                    document.getElementById('jobs-list').innerHTML = '<p class="empty">No videos yet. Upload one above!</p>';
+                }
+            } catch (e) {
+                alert('Failed to clear videos');
+            }
         }
 
         document.getElementById('upload-form').addEventListener('submit', async (e) => {

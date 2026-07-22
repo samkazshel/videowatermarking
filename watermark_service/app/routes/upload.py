@@ -84,3 +84,40 @@ def download_file(job_id: int, current_user: dict = Depends(get_current_user)):
             filename=job["original_filename"].replace(ext := Path(job["original_filename"]).suffix, f"_watermarked{ext}"),
             media_type="application/octet-stream"
         )
+
+@router.delete("/jobs/{job_id}")
+def delete_job(job_id: int, current_user: dict = Depends(get_current_user)):
+    with get_db_context() as db:
+        job = db.execute(
+            "SELECT * FROM jobs WHERE id = ? AND user_id = ?",
+            (job_id, current_user["id"])
+        ).fetchone()
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job["output_filename"]:
+            output_path = config.PROCESSED_DIR / job["output_filename"]
+            if output_path.exists():
+                output_path.unlink()
+
+        db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        db.commit()
+        return {"message": "Job deleted"}
+
+@router.delete("/jobs")
+def delete_all_jobs(current_user: dict = Depends(get_current_user)):
+    with get_db_context() as db:
+        jobs = db.execute(
+            "SELECT * FROM jobs WHERE user_id = ?",
+            (current_user["id"],)
+        ).fetchall()
+
+        for job in jobs:
+            if job["output_filename"]:
+                output_path = config.PROCESSED_DIR / job["output_filename"]
+                if output_path.exists():
+                    output_path.unlink()
+
+        db.execute("DELETE FROM jobs WHERE user_id = ?", (current_user["id"],))
+        db.commit()
+        return {"message": "All jobs deleted"}
