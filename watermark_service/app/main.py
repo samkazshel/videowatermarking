@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
@@ -29,21 +29,19 @@ templates = Jinja2Templates(directory="app/templates")
 def root(request: Request):
     token = request.cookies.get("access_token")
     if token:
-        return RedirectResponse(url="/dashboard")
-    return RedirectResponse(url="/login")
+        return RedirectResponse(url="/dashboard", status_code=302)
+    return RedirectResponse(url="/login", status_code=302)
 
 @app.get("/login")
 def login_page(request: Request):
     token = request.cookies.get("access_token")
     if token:
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url="/dashboard", status_code=302)
     return templates.TemplateResponse("login.html", {"request": request})
 
 @app.post("/login")
-def login(request: Request):
-    form_data = request._form
-    email = form_data.get("username")
-    password = form_data.get("password")
+def login(request: Request, username: str = Form(), password: str = Form()):
+    email = username
 
     with get_db_context() as db:
         user = db.execute(
@@ -57,24 +55,20 @@ def login(request: Request):
             "error": "Invalid email or password"
         })
 
-    token = create_access_token({"sub": user["id"]})
+    token = create_access_token({"sub": str(user["id"])})
     response = RedirectResponse(url="/dashboard", status_code=302)
-    response.set_cookie(key="access_token", value=token, httponly=True, samesite="lax")
+    response.set_cookie(key="access_token", value=token, path="/")
     return response
 
 @app.get("/register")
 def register_page(request: Request):
     token = request.cookies.get("access_token")
     if token:
-        return RedirectResponse(url="/dashboard")
+        return RedirectResponse(url="/dashboard", status_code=302)
     return templates.TemplateResponse("register.html", {"request": request})
 
 @app.post("/register")
-def register(request: Request):
-    form_data = request._form
-    email = form_data.get("email")
-    password = form_data.get("password")
-    confirm_password = form_data.get("confirm_password")
+def register(request: Request, email: str = Form(), password: str = Form(), confirm_password: str = Form()):
 
     if password != confirm_password:
         return templates.TemplateResponse("register.html", {
@@ -103,19 +97,19 @@ def register(request: Request):
 def dashboard(request: Request):
     token = request.cookies.get("access_token")
     if not token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/login", status_code=302)
 
     try:
         from jose import jwt
         payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM])
-        user_id = payload.get("sub")
+        user_id = int(payload.get("sub"))
     except Exception:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/login", status_code=302)
 
     with get_db_context() as db:
         user = db.execute("SELECT id, email FROM users WHERE id = ?", (user_id,)).fetchone()
         if not user:
-            return RedirectResponse(url="/login")
+            return RedirectResponse(url="/login", status_code=302)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -132,14 +126,14 @@ def logout():
 def download(job_id: int, request: Request):
     token = request.cookies.get("access_token")
     if not token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/login", status_code=302)
 
     try:
         from jose import jwt
         payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM])
-        user_id = payload.get("sub")
+        user_id = int(payload.get("sub"))
     except Exception:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/login", status_code=302)
 
     with get_db_context() as db:
         job = db.execute(
@@ -147,11 +141,11 @@ def download(job_id: int, request: Request):
             (job_id, user_id)
         ).fetchone()
         if not job or job["status"] != "completed":
-            return RedirectResponse(url="/dashboard")
+            return RedirectResponse(url="/dashboard", status_code=302)
 
         output_path = config.PROCESSED_DIR / job["output_filename"]
         if not output_path.exists():
-            return RedirectResponse(url="/dashboard")
+            return RedirectResponse(url="/dashboard", status_code=302)
 
         from pathlib import Path
         ext = Path(job["original_filename"]).suffix

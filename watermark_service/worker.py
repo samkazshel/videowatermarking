@@ -7,18 +7,22 @@ from pathlib import Path
 import config
 from app.database import get_db_context
 
-# Add parent to path so we can import the original script
-SCRIPT_DIR = Path(__file__).parent.parent.parent
-EMAIL_WATERMARK = SCRIPT_DIR.parent / "email_watermark.py"
+EMAIL_WATERMARK = Path(__file__).parent / "email_watermark.py"
+
+def log(msg: str):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 def process_job(job_id: int):
     with get_db_context() as db:
         job = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         if not job:
+            log(f"Job {job_id}: not found")
             return
         if job["status"] != "pending":
+            log(f"Job {job_id}: status is {job['status']}, skipping")
             return
 
+        log(f"Job {job_id}: processing '{job['original_filename']}'")
         db.execute("UPDATE jobs SET status = 'processing' WHERE id = ?", (job_id,))
         db.commit()
 
@@ -30,14 +34,18 @@ def process_job(job_id: int):
             break
 
     if not actual_input:
+        log(f"Job {job_id}: input file not found")
         mark_failed(job_id, "Input file not found")
         return
+
+    log(f"Job {job_id}: input={actual_input.name}, email={job['email']}")
 
     output_filename = f"{job['id']}_watermarked{actual_input.suffix}"
     output_path = config.PROCESSED_DIR / output_filename
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
+        log(f"Job {job_id}: starting ffmpeg...")
         result = subprocess.run(
             [
                 sys.executable, str(EMAIL_WATERMARK),
@@ -47,10 +55,12 @@ def process_job(job_id: int):
             ],
             capture_output=True,
             text=True,
-            timeout=config.FFMPEG_TIMEOUT
+            timeout=config.FFMPEG_TIMEOUT,
+            cwd=str(EMAIL_WATERMARK.parent)
         )
 
         if result.returncode == 0 and output_path.exists():
+            log(f"Job {job_id}: completed successfully")
             with get_db_context() as db:
                 db.execute(
                     "UPDATE jobs SET status = 'completed', output_filename = ?, completed_at = ? WHERE id = ?",
@@ -58,11 +68,15 @@ def process_job(job_id: int):
                 )
                 db.commit()
         else:
-            mark_failed(job_id, result.stderr[-1000:] if result.stderr else "Unknown error")
+            error = result.stderr[-1000:] if result.stderr else "Unknown error"
+            log(f"Job {job_id}: failed - {error[:100]}")
+            mark_failed(job_id, error)
 
     except subprocess.TimeoutExpired:
+        log(f"Job {job_id}: timed out after {config.FFMPEG_TIMEOUT}s")
         mark_failed(job_id, "Processing timed out")
     except Exception as e:
+        log(f"Job {job_id}: error - {e}")
         mark_failed(job_id, str(e))
     finally:
         if actual_input.exists():
@@ -77,6 +91,7 @@ def mark_failed(job_id: int, error: str):
         db.commit()
 
 async def worker_loop():
+    log("Worker started, waiting for jobs...")
     while True:
         with get_db_context() as db:
             pending = db.execute(

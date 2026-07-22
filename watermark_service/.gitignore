@@ -1,7 +1,2 @@
-*~
-__pycache__/
-*.pyc
-.env
-app/database.db
-uploads/
-processed/
+# Environment variables - DO NOT COMMIT .env files!
+SECRET_KEY=
