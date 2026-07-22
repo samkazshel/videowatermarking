@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 import config
@@ -62,9 +63,8 @@ def process_job(job_id: int):
                 "-o", str(output_path),
                 "--progress-file", str(progress_file)
             ],
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
-            text=True,
             cwd=str(EMAIL_WATERMARK.parent)
         )
 
@@ -79,10 +79,10 @@ def process_job(job_id: int):
                         update_progress(job_id, progress)
                 except:
                     pass
-            asyncio.sleep(0.5)
+            time.sleep(0.5)
 
         proc.wait()
-        stderr = proc.stderr.read() if proc.stderr else ""
+        stderr = proc.stderr.read().decode() if proc.stderr else ""
 
         if proc.returncode == 0 and output_path.exists():
             log(f"Job {job_id}: completed successfully")
