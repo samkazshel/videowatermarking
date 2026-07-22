@@ -22,5 +22,6 @@ class JobResponse(BaseModel):
     status: str
     output_filename: str | None
     error_message: str | None
+    progress: int
     created_at: str
     completed_at: str | None

@@ -75,11 +75,19 @@
                     return;
                 }
                 container.innerHTML = jobs.map(job => `
-                    <div class="job-card status-${job.status}">
+                    <div class="job-card status-${job.status}" data-job-id="${job.id}">
                         <div class="job-info">
                             <strong>${escapeHtml(job.original_filename)}</strong>
                             <span class="job-email">${escapeHtml(job.email)}</span>
                             <span class="job-date">${new Date(job.created_at).toLocaleDateString()}</span>
+                            ${job.status === 'processing' ? `
+                                <div class="job-progress">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: ${job.progress}%"></div>
+                                    </div>
+                                    <span class="progress-text">${job.progress}%</span>
+                                </div>
+                            ` : ''}
                         </div>
                         <div class="job-status">
                             <span class="status-badge ${job.status}">${job.status}</span>
@@ -103,21 +111,37 @@
             const interval = setInterval(async () => {
                 const res = await fetchWithAuth(`${API_BASE}/jobs/${jobId}`);
                 const job = await res.json();
-                const statusBadge = document.querySelector(`.job-card[data-job-id="${jobId}"] .status-badge`);
+                const card = document.querySelector(`.job-card[data-job-id="${jobId}"]`);
+                if (!card) return;
+
+                const statusBadge = card.querySelector(".status-badge");
                 if (statusBadge) {
                     statusBadge.className = `status-badge ${job.status}`;
                     statusBadge.textContent = job.status;
                 }
+
+                const progressFill = card.querySelector(".progress-fill");
+                const progressText = card.querySelector(".progress-text");
+                if (progressFill && job.progress !== undefined) {
+                    progressFill.style.width = `${job.progress}%`;
+                    if (progressText) progressText.textContent = `${job.progress}%`;
+                }
+
                 if (job.status === 'completed') {
                     clearInterval(interval);
-                    const card = document.querySelector(`.job-card[data-job-id="${jobId}"] .job-status`);
-                    if (card) {
-                        card.innerHTML = `<span class="status-badge completed">completed</span> <a href="/download/${jobId}" class="download-btn">Download</a>`;
+                    const jobStatus = card.querySelector(".job-status");
+                    if (jobStatus) {
+                        jobStatus.innerHTML = `<span class="status-badge completed">completed</span> <a href="/download/${jobId}" class="download-btn">Download</a>`;
                     }
+                    const jobInfo = card.querySelector(".job-info");
+                    const progressDiv = jobInfo.querySelector(".job-progress");
+                    if (progressDiv) progressDiv.remove();
                 } else if (job.status === 'failed') {
                     clearInterval(interval);
+                    const progressDiv = card.querySelector(".job-progress");
+                    if (progressDiv) progressDiv.remove();
                 }
-            }, 3000);
+            }, 1000);
         }
 
         document.getElementById('upload-form').addEventListener('submit', async (e) => {

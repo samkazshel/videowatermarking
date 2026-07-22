@@ -194,7 +194,7 @@ def draw_bar(fraction: float, elapsed: float):
     sys.stdout.flush()
 
 
-def run_ffmpeg(video: Path, output: Path, vf: str, audio_args, duration: float):
+def run_ffmpeg(video: Path, output: Path, vf: str, audio_args, duration: float, progress_file: Path = None):
     """Run ffmpeg, rendering a progress bar. Returns (returncode, stderr_text)."""
     cmd = [
         "ffmpeg", "-y", "-v", "error", "-nostats",
@@ -208,15 +208,22 @@ def run_ffmpeg(video: Path, output: Path, vf: str, audio_args, duration: float):
     with tempfile.TemporaryFile(mode="w+") as errf:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf, text=True)
         draw_bar(0.0, 0.0)
+        if progress_file:
+            progress_file.write_text("0")
         for line in proc.stdout:
             line = line.strip()
             if line.startswith("out_time_us="):
                 value = line.split("=", 1)[1]
                 if value.isdigit():
                     done = int(value) / 1_000_000
+                    pct = min(int((done / duration) * 100), 99)
                     draw_bar(done / duration, time.monotonic() - start)
+                    if progress_file:
+                        progress_file.write_text(str(pct))
             elif line == "progress=end":
                 draw_bar(1.0, time.monotonic() - start)
+                if progress_file:
+                    progress_file.write_text("100")
         proc.wait()
         errf.seek(0)
         stderr = errf.read()
@@ -239,6 +246,8 @@ def main():
                         help="Font size in px (auto-scales to video if not set)")
     parser.add_argument("--seed", type=int, default=None,
                         help="Random seed for reproducible corner order")
+    parser.add_argument("--progress-file", type=Path, default=None,
+                        help="File to write progress percentage to (0-100)")
     args = parser.parse_args()
 
     check_dependencies()
@@ -268,15 +277,14 @@ def main():
 
     if not info["has_audio"] or ext == ".gif":
         code, stderr = run_ffmpeg(args.video, output, vf,
-                                  ["-an"] if ext == ".gif" else [], duration)
+                                  ["-an"] if ext == ".gif" else [], duration, args.progress_file)
     elif ext in AUDIO_COPY_SAFE:
-        # Try passing audio through untouched first; fall back to re-encoding
-        code, stderr = run_ffmpeg(args.video, output, vf, ["-c:a", "copy"], duration)
+        code, stderr = run_ffmpeg(args.video, output, vf, ["-c:a", "copy"], duration, args.progress_file)
         if code != 0:
             print("note: audio passthrough failed, re-encoding audio instead")
-            code, stderr = run_ffmpeg(args.video, output, vf, audio_encode, duration)
+            code, stderr = run_ffmpeg(args.video, output, vf, audio_encode, duration, args.progress_file)
     else:
-        code, stderr = run_ffmpeg(args.video, output, vf, audio_encode, duration)
+        code, stderr = run_ffmpeg(args.video, output, vf, audio_encode, duration, args.progress_file)
 
     if code != 0:
         die(f"ffmpeg failed:\n{stderr[-2000:]}")

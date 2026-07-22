@@ -12,6 +12,11 @@ EMAIL_WATERMARK = Path(__file__).parent / "email_watermark.py"
 def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
+def update_progress(job_id: int, progress: int):
+    with get_db_context() as db:
+        db.execute("UPDATE jobs SET progress = ? WHERE id = ?", (progress, job_id))
+        db.commit()
+
 def process_job(job_id: int):
     with get_db_context() as db:
         job = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
@@ -23,7 +28,7 @@ def process_job(job_id: int):
             return
 
         log(f"Job {job_id}: processing '{job['original_filename']}'")
-        db.execute("UPDATE jobs SET status = 'processing' WHERE id = ?", (job_id,))
+        db.execute("UPDATE jobs SET status = 'processing', progress = 0 WHERE id = ?", (job_id,))
         db.commit()
 
     actual_input = None
@@ -44,23 +49,44 @@ def process_job(job_id: int):
     output_path = config.PROCESSED_DIR / output_filename
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
+    progress_file = Path(f"/tmp/progress_{job_id}.txt")
+    last_progress = 0
+
     try:
         log(f"Job {job_id}: starting ffmpeg...")
-        result = subprocess.run(
+        proc = subprocess.Popen(
             [
                 sys.executable, str(EMAIL_WATERMARK),
                 str(actual_input),
                 job["email"],
-                "-o", str(output_path)
+                "-o", str(output_path),
+                "--progress-file", str(progress_file)
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=config.FFMPEG_TIMEOUT,
             cwd=str(EMAIL_WATERMARK.parent)
         )
 
-        if result.returncode == 0 and output_path.exists():
+        while True:
+            if proc.poll() is not None:
+                break
+            if progress_file.exists():
+                try:
+                    progress = int(progress_file.read_text().strip())
+                    if progress > last_progress:
+                        last_progress = progress
+                        update_progress(job_id, progress)
+                except:
+                    pass
+            asyncio.sleep(0.5)
+
+        proc.wait()
+        stderr = proc.stderr.read() if proc.stderr else ""
+
+        if proc.returncode == 0 and output_path.exists():
             log(f"Job {job_id}: completed successfully")
+            update_progress(job_id, 100)
             with get_db_context() as db:
                 db.execute(
                     "UPDATE jobs SET status = 'completed', output_filename = ?, completed_at = ? WHERE id = ?",
@@ -68,7 +94,7 @@ def process_job(job_id: int):
                 )
                 db.commit()
         else:
-            error = result.stderr[-1000:] if result.stderr else "Unknown error"
+            error = stderr[-1000:] if stderr else "Unknown error"
             log(f"Job {job_id}: failed - {error[:100]}")
             mark_failed(job_id, error)
 
@@ -81,6 +107,8 @@ def process_job(job_id: int):
     finally:
         if actual_input.exists():
             os.remove(actual_input)
+        if progress_file.exists():
+            progress_file.unlink()
 
 def mark_failed(job_id: int, error: str):
     with get_db_context() as db:

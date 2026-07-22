@@ -28,11 +28,16 @@ def init_db():
                 status TEXT NOT NULL DEFAULT 'pending',
                 output_filename TEXT,
                 error_message TEXT,
+                progress INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 completed_at TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
         """)
+        try:
+            db.execute("ALTER TABLE jobs ADD COLUMN progress INTEGER DEFAULT 0")
+        except:
+            pass
 
 @contextlib.contextmanager
 def get_db_context():
