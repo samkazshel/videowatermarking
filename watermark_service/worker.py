@@ -7,7 +7,7 @@ from pathlib import Path
 import config
 from app.database import get_db_context
 
-EMAIL_WATERMARK = Path(__file__).parent.parent / "email_watermark.py"
+EMAIL_WATERMARK = Path(__file__).parent / "email_watermark.py"
 
 def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
@@ -55,7 +55,8 @@ def process_job(job_id: int):
             ],
             capture_output=True,
             text=True,
-            timeout=config.FFMPEG_TIMEOUT
+            timeout=config.FFMPEG_TIMEOUT,
+            cwd=str(EMAIL_WATERMARK.parent)
         )
 
         if result.returncode == 0 and output_path.exists():
