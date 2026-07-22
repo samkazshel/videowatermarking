@@ -1,2 +1,16 @@
 # Environment variables - DO NOT COMMIT .env files!
 SECRET_KEY=
+
+# Uploaded and processed files
+uploads/
+processed/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
