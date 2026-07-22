@@ -1,3 +1,4 @@
 #!/bin/bash
 # Cleanup script for processed videos older than 3 days
-find /home/samkenkaj/Desktop/videowatermarking/watermark_service/processed -mtime +3 -delete 2>/dev/null
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+find "$SCRIPT_DIR/processed" -mtime +3 -delete 2>/dev/null
