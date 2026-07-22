@@ -9,14 +9,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            cd ~/videowatermarking/watermark_service
-            git pull origin main
-            docker compose up -d --build
+      - run: echo "Server will pull and deploy changes automatically via cron"
