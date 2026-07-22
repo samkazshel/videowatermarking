@@ -35,7 +35,7 @@
         </section>
 
         <section class="jobs-section">
-            <h2>Your Videos</h2>
+            <h2>Your Videos <button class="clear-all-btn" onclick="clearAllJobs()">Clear All</button></h2>
             <div id="jobs-list">
                 <p class="loading">Loading...</p>
             </div>
@@ -172,6 +172,18 @@
                 }
             } catch (e) {
                 alert('Failed to delete');
+            }
+        }
+
+        async function clearAllJobs() {
+            if (!confirm('Delete all videos? This cannot be undone.')) return;
+            try {
+                const res = await fetchWithAuth(`${API_BASE}/jobs`, { method: 'DELETE' });
+                if (res.ok) {
+                    document.getElementById('jobs-list').innerHTML = '<p class="empty">No videos yet. Upload one above!</p>';
+                }
+            } catch (e) {
+                alert('Failed to clear videos');
             }
         }
 

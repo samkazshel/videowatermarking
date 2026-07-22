@@ -103,3 +103,21 @@ def delete_job(job_id: int, current_user: dict = Depends(get_current_user)):
         db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
         db.commit()
         return {"message": "Job deleted"}
+
+@router.delete("/jobs")
+def delete_all_jobs(current_user: dict = Depends(get_current_user)):
+    with get_db_context() as db:
+        jobs = db.execute(
+            "SELECT * FROM jobs WHERE user_id = ?",
+            (current_user["id"],)
+        ).fetchall()
+
+        for job in jobs:
+            if job["output_filename"]:
+                output_path = config.PROCESSED_DIR / job["output_filename"]
+                if output_path.exists():
+                    output_path.unlink()
+
+        db.execute("DELETE FROM jobs WHERE user_id = ?", (current_user["id"],))
+        db.commit()
+        return {"message": "All jobs deleted"}
