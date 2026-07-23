@@ -46,7 +46,7 @@ def process_job(job_id: int):
 
     log(f"Job {job_id}: input={actual_input.name}, email={job['email']}")
 
-    output_filename = f"{job['id']}_watermarked{actual_input.suffix}"
+    output_filename = f"{Path(job['original_filename']).stem}_{job['email']}{actual_input.suffix}"
     output_path = config.PROCESSED_DIR / output_filename
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 

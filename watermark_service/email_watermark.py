@@ -26,7 +26,7 @@ import tempfile
 import time
 from pathlib import Path
 
-PADDING = 20  # px from the edges
+PADDING = 200  # px from the edges (closer to center for anti-crop tracking)
 BAR_WIDTH = 36
 
 # Corner name -> (x expression, y expression) using ffmpeg drawtext variables
@@ -240,8 +240,8 @@ def main():
     parser.add_argument("-o", "--output", type=Path, default=None,
                         help="Output path; its extension picks the format "
                              "(default: <input>_watermarked.<same ext>)")
-    parser.add_argument("--opacity", type=float, default=0.7,
-                        help="Watermark opacity 0-1 (default: 0.7)")
+    parser.add_argument("--opacity", type=float, default=0.55,
+                        help="Watermark opacity 0-1 (default: 0.55)")
     parser.add_argument("--fontsize", type=int, default=None,
                         help="Font size in px (auto-scales to video if not set)")
     parser.add_argument("--seed", type=int, default=None,
@@ -258,7 +258,7 @@ def main():
         die("--opacity must be between 0 and 1")
 
     output = args.output or args.video.with_name(
-        f"{args.video.stem}_watermarked{args.video.suffix or '.mp4'}"
+        f"{args.video.stem}_{args.email}{args.video.suffix or '.mp4'}"
     )
     ext = output.suffix.lower()
 

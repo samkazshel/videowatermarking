@@ -17,9 +17,9 @@
                     <small>The email will appear in each corner of the video</small>
                 </div>
                 <div class="form-group">
-                    <label for="file">Select Video</label>
-                    <input type="file" id="file" name="file" accept="video/*" required>
-                    <small>MP4, MOV, MKV, AVI, WebM, GIF supported</small>
+                    <label for="file">Select Videos</label>
+                    <input type="file" id="file" name="files" accept="video/*" multiple required>
+                    <small>MP4, MOV, MKV, AVI, WebM, GIF supported (multiple files queued automatically)</small>
                 </div>
                 <div id="progress-container" class="hidden">
                     <div class="progress-bar">
@@ -202,7 +202,9 @@
 
             const formData = new FormData();
             formData.append('email', form.email.value);
-            formData.append('file', form.file.files[0]);
+            for (const file of form.file.files) {
+                formData.append('files', file);
+            }
 
             try {
                 const res = await fetchWithAuth(`${API_BASE}/jobs`, {
@@ -221,27 +223,32 @@
                     throw new Error(data.detail || 'Upload failed');
                 }
 
-                statusText.textContent = 'Processing video...';
+                statusText.textContent = 'Processing videos...';
                 progressFill.style.width = '50%';
 
-                const jobCard = document.createElement('div');
-                jobCard.className = 'job-card status-pending';
-                jobCard.dataset.jobId = data.job_id;
-                jobCard.innerHTML = `
-                    <div class="job-info">
-                        <strong>${escapeHtml(data.filename)}</strong>
-                        <span class="job-email">${escapeHtml(form.email.value)}</span>
-                    </div>
-                    <div class="job-status">
-                        <span class="status-badge pending">pending</span>
-                    </div>
-                `;
-                document.getElementById('jobs-list').prepend(jobCard);
+                for (const job of data.jobs) {
+                    const jobCard = document.createElement('div');
+                    jobCard.className = 'job-card status-pending';
+                    jobCard.dataset.jobId = job.job_id;
+                    jobCard.innerHTML = `
+                        <div class="job-info">
+                            <strong>${escapeHtml(job.filename)}</strong>
+                            <span class="job-email">${escapeHtml(form.email.value)}</span>
+                        </div>
+                        <div class="job-status">
+                            <span class="status-badge pending">pending</span>
+                        </div>
+                    `;
+                    document.getElementById('jobs-list').prepend(jobCard);
+                    pollJobStatus(job.job_id);
+                }
 
-                pollJobStatus(data.job_id);
+                if (data.errors && data.errors.length > 0) {
+                    alert('Some files failed: ' + data.errors.join(', '));
+                }
 
                 form.reset();
-                statusText.textContent = 'Done!';
+                statusText.textContent = 'Done! Videos are queued.';
                 progressFill.style.width = '100%';
             } catch (e) {
                 alert('Error: ' + e.message);
