@@ -11,37 +11,57 @@ import config
 router = APIRouter(prefix="/api", tags=["upload"])
 
 @router.post("/jobs")
-async def create_job(
+async def create_jobs(
     email: Annotated[str, Form()],
-    file: Annotated[UploadFile, File()],
+    files: Annotated[list[UploadFile], File()],
     current_user: dict = Depends(get_current_user)
 ):
-    ext = Path(file.filename).suffix.lower()
-    if ext not in config.ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
 
-    file_size = 0
-    original_filename = file.filename
-    config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    job_ids = []
+    errors = []
 
-    with get_db_context() as db:
-        cursor = db.execute(
-            "INSERT INTO jobs (user_id, original_filename, email, status, created_at) VALUES (?, ?, ?, ?, ?)",
-            (current_user["id"], original_filename, email, "pending", datetime.now(timezone.utc).isoformat())
-        )
-        db.commit()
-        job_id = cursor.lastrowid
+    for file in files:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in config.ALLOWED_EXTENSIONS:
+            errors.append(f"{file.filename}: unsupported file type")
+            continue
 
-    upload_path = config.UPLOAD_DIR / f"{job_id}{ext}"
-    with open(upload_path, "wb") as f:
-        while chunk := await file.read(1024 * 1024):
-            file_size += len(chunk)
-            if file_size > config.MAX_FILE_SIZE:
-                os.remove(upload_path)
-                raise HTTPException(status_code=413, detail="File too large")
-            f.write(chunk)
+        file_size = 0
+        original_filename = file.filename
+        config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    return {"job_id": job_id, "filename": original_filename}
+        with get_db_context() as db:
+            cursor = db.execute(
+                "INSERT INTO jobs (user_id, original_filename, email, status, created_at) VALUES (?, ?, ?, ?, ?)",
+                (current_user["id"], original_filename, email, "pending", datetime.now(timezone.utc).isoformat())
+            )
+            db.commit()
+            job_id = cursor.lastrowid
+
+        upload_path = config.UPLOAD_DIR / f"{job_id}{ext}"
+        upload_ok = True
+        try:
+            with open(upload_path, "wb") as f:
+                while True:
+                    chunk = await file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    file_size += len(chunk)
+                    if file_size > config.MAX_FILE_SIZE:
+                        os.remove(upload_path)
+                        errors.append(f"{file.filename}: file too large")
+                        upload_ok = False
+                        break
+                    f.write(chunk)
+        except Exception as e:
+            errors.append(f"{file.filename}: {str(e)}")
+            upload_ok = False
+        if upload_ok:
+            job_ids.append({"job_id": job_id, "filename": original_filename})
+
+    return {"jobs": job_ids, "errors": errors if errors else None}
 
 @router.get("/jobs")
 def list_jobs(current_user: dict = Depends(get_current_user)):
@@ -81,7 +101,7 @@ def download_file(job_id: int, current_user: dict = Depends(get_current_user)):
 
         return FileResponse(
             output_path,
-            filename=job["original_filename"].replace(ext := Path(job["original_filename"]).suffix, f"_watermarked{ext}"),
+            filename=job["output_filename"],
             media_type="application/octet-stream"
         )
 

@@ -147,13 +147,9 @@ def download(job_id: int, request: Request):
         if not output_path.exists():
             return RedirectResponse(url="/dashboard", status_code=302)
 
-        from pathlib import Path
-        ext = Path(job["original_filename"]).suffix
-        filename = job["original_filename"].replace(ext, f"_watermarked{ext}")
-
         from fastapi.responses import FileResponse
         return FileResponse(
             output_path,
-            filename=filename,
+            filename=job["output_filename"],
             media_type="application/octet-stream"
         )
